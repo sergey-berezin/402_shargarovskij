@@ -1,4 +1,5 @@
-﻿using System.Security.Cryptography;
+﻿using System.Collections.Concurrent;
+using System.Security.Cryptography;
 
 namespace GeneticSolverLibrary
 {
@@ -8,7 +9,7 @@ namespace GeneticSolverLibrary
         public int len { get; set; }
         public int x { get; set; }
         public int y { get; set; }
-
+        
         public Figure(int a, int _x, int _y)
         {
             this.len = a;
@@ -51,15 +52,17 @@ namespace GeneticSolverLibrary
 
     public class GenSolver
     {
+        public int mutation;
+        public int populationSize;
         public bool flagStop = false;
-        private readonly Random rand = new Random();
-        private List<Grid> population = new List<Grid>();
+        private ConcurrentBag<Grid> population = new ConcurrentBag<Grid>();
         public Grid answer
         {
             get { return this.population.OrderBy(val => val.MinCoverRectSquare()).First(); }
         }
         public Grid InitGrid(int c1, int c2, int c3)
         {
+            Random rand = new Random();
             int maxlen = c1 + c2 * 2 + c3 * 3;
             List<Figure> _vals = new List<Figure>();
             for (int i = 0; i < c1; ++i)
@@ -76,8 +79,10 @@ namespace GeneticSolverLibrary
             }
             return new Grid(_vals);
         }
-        public GenSolver(int size, int c1, int c2, int c3)
+        public GenSolver(int size, int c1, int c2, int c3, int mutation)
         {
+            this.mutation = mutation;
+            this.populationSize = size;
             for (int i = 0; i < size;)
             {
                 Grid grid = InitGrid(c1, c2, c3);
@@ -95,7 +100,7 @@ namespace GeneticSolverLibrary
             {
                 for (int j = i + 1; j < n; ++j)
                 {
-                    if (grid.vals[i].IfIntersectFigure(grid.vals[j]))
+                    if (grid.vals.ElementAt(i).IfIntersectFigure(grid.vals.ElementAt(j)))
                     {
                         return true;
                     }
@@ -105,6 +110,7 @@ namespace GeneticSolverLibrary
         }
         private Grid Crossover(Grid grid1, Grid grid2)
         {
+            Random rand = new Random();
             int n = grid1.vals.Count;
             List<Figure> grid = new List<Figure>();
             int border = rand.Next(1, grid1.vals.Count - 1);
@@ -112,20 +118,21 @@ namespace GeneticSolverLibrary
             {
                 if (i < border)
                 {
-                    grid.Add(Figure.clone(grid1.vals[i]));
+                    grid.Add(Figure.clone(grid1.vals.ElementAt(i)));
                 }
                 else
                 {
-                    grid.Add(Figure.clone(grid2.vals[i]));
+                    grid.Add(Figure.clone(grid2.vals.ElementAt(i)));
                 }
             }
             return new Grid(grid);
         }
         private void Mutate(Grid grid)
-        { 
+        {
+            Random rand = new Random();
             foreach (Figure val in grid.vals)
             {
-                if (rand.Next(0, 100) < 20)
+                if (rand.Next(0, 100) < this.mutation)
                 {
                     val.x += rand.Next(-1, 2);
                     val.y += rand.Next(-1, 2);
@@ -134,21 +141,22 @@ namespace GeneticSolverLibrary
         }
         private void Selection()
         {
-            List<Grid> selection = population.OrderBy(val => val.MinCoverRectSquare()).ToList();
-            List<Grid> selectedPopulation = new List<Grid>();
-            selectedPopulation.Add(selection[0]);
+            ConcurrentQueue<Grid> selection = new ConcurrentQueue<Grid> (population.OrderBy(val => val.MinCoverRectSquare()));
+            ConcurrentQueue<Grid> selectedPopulation = new ConcurrentQueue<Grid>();
+            selectedPopulation.Enqueue(selection.ElementAt(0));
 
-            while (selectedPopulation.Count < population.Count)
-            {
-                Grid grid1 = selection[rand.Next(0, selection.Count / 2 + 1)], grid2 = selection[rand.Next(0, selection.Count / 2 + 1)];
+            Parallel.For(0, populationSize, i => {
+                Random rand = new Random();
+                Grid grid1 = selection.ElementAt(rand.Next(0, selection.Count / 2 + 1)), grid2 = selection.ElementAt(rand.Next(0, selection.Count / 2 + 1));
                 Grid selectedGrid = Crossover(grid1, grid2);
                 Mutate(selectedGrid);
                 if (!IfIntersectGrid(selectedGrid))
                 {
-                    selectedPopulation.Add(selectedGrid);
+                    selectedPopulation.Enqueue(selectedGrid);
                 }
-            }
-            population = selectedPopulation;
+
+            });
+            population = new ConcurrentBag<Grid> (selectedPopulation);
         }
         public event Action<int, Grid>? OnIterationPassed;
         public Grid Iterations()
