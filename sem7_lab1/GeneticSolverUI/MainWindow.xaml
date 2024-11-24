@@ -13,29 +13,54 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
+            <StackPanel Orientation="Horizontal" Grid.Row="0">
+                <StackPanel Orientation="Vertical" Margin="20" >
+                    <Label Content="Number of 1x1 Squares:" HorizontalAlignment="Left"/>
+                    <TextBox x:Name="Square1x1CountInput" Text="15" HorizontalAlignment="Left"/>
+                    <Label Content="Number of 2x2 Squares:" HorizontalAlignment="Left"/>
+                    <TextBox x:Name="Square2x2CountInput" Text="5" HorizontalAlignment="Left"/>
+                    <Label Content="Number of 3x3 Squares:" HorizontalAlignment="Left"/>
+                    <TextBox x:Name="Square3x3CountInput" Text="3" HorizontalAlignment="Left"/>
 
-            <StackPanel Orientation="Vertical" Grid.Row="0">
-                <Label Content="Number of 1x1 Squares:" HorizontalAlignment="Left"/>
-                <TextBox x:Name="Square1x1CountInput" Text="15" HorizontalAlignment="Left"/>
-                <Label Content="Number of 2x2 Squares:" HorizontalAlignment="Left"/>
-                <TextBox x:Name="Square2x2CountInput" Text="5" HorizontalAlignment="Left"/>
-                <Label Content="Number of 3x3 Squares:" HorizontalAlignment="Left"/>
-                <TextBox x:Name="Square3x3CountInput" Text="3" HorizontalAlignment="Left"/>
+                    <Label Content="Population Size:" HorizontalAlignment="Left"/>
+                    <TextBox x:Name="PopulationSizeInput" Text="1000" HorizontalAlignment="Left"/>
 
-                <Label Content="Population Size:" HorizontalAlignment="Left"/>
-                <TextBox x:Name="PopulationSizeInput" Text="1000" HorizontalAlignment="Left"/>
+                    <Label Content="Mutation Rate:" HorizontalAlignment="Left"/>
+                    <TextBox x:Name="MutationRateInput" Text="20" HorizontalAlignment="Left"/>
 
-                <Label Content="Mutation Rate:" HorizontalAlignment="Left"/>
-                <TextBox x:Name="MutationRateInput" Text="20" HorizontalAlignment="Left"/>
+                    <Label Content="Record Name:" HorizontalAlignment="Left"/>
+                    <TextBox x:Name="NewRecordNameInput" Text="Default name" Width="100" HorizontalAlignment="Left"/>
+                </StackPanel>
+
+
+                <StackPanel Orientation="Vertical">
+
+                    <ListView x:Name="RecordsListView" HorizontalAlignment="Stretch" VerticalAlignment="Top" Height="200" Margin="10">
+                        <ListView.View>
+                            <GridView>
+                                <GridViewColumn Header="ID" DisplayMemberBinding="{Binding RecordId}" Width="50"/>
+                                <GridViewColumn Header="Name" DisplayMemberBinding="{Binding Name}" Width="150"/>
+                                <GridViewColumn Header="Date Created" DisplayMemberBinding="{Binding CreationDate}" Width="200"/>
+                            </GridView>
+                        </ListView.View>
+                    </ListView>
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="Load Selected Record" Width="200" Height="30"  Click="LoadSelectedRecordButton_Click" />
+                        <Button Content="Delete Selected Record" Width="200" Height="30"  Click="DeleteSelectedRecordButton_Click" />
+                    </StackPanel>
+                </StackPanel>
             </StackPanel>
+
 
             <StackPanel Orientation="Vertical" Grid.Row="1">
                 <TextBlock x:Name="GenerationText" Text="No generations" />
-                <TextBlock x:Name="BestDistanceText" Text="No best distance" />
-                <Button x:Name="Start" Content="Start" IsEnabled="True" Click="StartSolver"/>
+                <TextBlock x:Name="BestSquareText" Text="No best square" />
+                <Button x:Name="Start" Content="Start new from params" IsEnabled="True" Click="StartSolver"/>
                 <Button x:Name="Stop" Content="Stop" IsEnabled="False" Click="StopSolver"/>
-            </StackPanel>
+                <Button x:Name="Continue" Content="Continue" IsEnabled="False" Click="ContinueSolver"/>
+                <Button x:Name="Save" Content="Save" IsEnabled="False" Click="SaveSolver"/>
 
+            </StackPanel>
             <GroupBox Header="Visualization" Grid.Row="2" Margin="0,15,0,0">
                 <Canvas Margin="5,10,0,0" Width="300" Height="300" x:Name="VisualizationCanvas"/>
             </GroupBox>

@@ -8,6 +8,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="7.0.20" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\GeneticSolverLibrary\GeneticSolverLibrary.csproj" />
   </ItemGroup>
 

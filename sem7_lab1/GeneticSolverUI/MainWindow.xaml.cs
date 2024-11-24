@@ -13,18 +13,102 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
-
 using GeneticSolverLibrary;
+using GeneticSolverDatabase;
+using Microsoft.EntityFrameworkCore;
+using System.Windows.Media.Media3D;
 
 namespace GeneticSolverUI
 {
     public partial class MainWindow : Window
     {
         private GenSolver? geneticSolver;
+        private GeneticAlgorithmContext dbContext = new GeneticAlgorithmContext();
 
         public MainWindow()
         {
             InitializeComponent();
+            LoadRecords();
+        }
+
+        private void LoadRecords()
+        {
+            try
+            {
+                var records = dbContext.Records
+                    .OrderByDescending(r => r.CreationDate)
+                    .ToList();
+                RecordsListView.ItemsSource = records;
+            }
+            catch (Exception ex)
+            { }
+        }
+
+        private void LoadSelectedRecordButton_Click(object sender, RoutedEventArgs e)
+        {
+            var selectedRecord = (Record)RecordsListView.SelectedItem;
+            if (selectedRecord == null)
+            {
+                MessageBox.Show("Please select a record to load.");
+                return;
+            }
+
+            try
+            {
+                var genSolver = LoadGenSolver(selectedRecord.RecordId);
+                if (genSolver != null)
+                {
+                    geneticSolver = genSolver;
+                    geneticSolver.OnIterationPassed += GeneticSolver_OnGenerationCompleted;
+                    geneticSolver.flagStop = false;
+
+                    Square1x1CountInput.Text = geneticSolver.countOf1x1.ToString();
+                    Square2x2CountInput.Text = geneticSolver.countOf2x2.ToString();
+                    Square3x3CountInput.Text = geneticSolver.countOf3x3.ToString();
+                    PopulationSizeInput.Text = geneticSolver.populationSize.ToString();
+                    MutationRateInput.Text = geneticSolver.mutation.ToString();
+                    GenerationText.Text = "Generation: " + geneticSolver.iterationsPassed.ToString();
+
+                    var record = dbContext.Records.FirstOrDefault(r => r.RecordId == selectedRecord.RecordId);
+                    NewRecordNameInput.Text = record?.Name;
+
+                    var bestElement = geneticSolver.population.OrderBy(val => val.MinCoverRectSquare()).ElementAt(0);
+                    BestSquareText.Text = "Best distance: " + bestElement.MinCoverRectSquare().ToString();
+
+                    UpdateCanvas(bestElement);
+                    Continue.IsEnabled = true;
+
+                    MessageBox.Show($"Loaded record '{selectedRecord.Name}' successfully.");
+                }
+                else
+                {
+                    MessageBox.Show($"Failed to load the selected record's GenSolver.");
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error loading record: {ex.Message}");
+            }
+        }
+
+        private void DeleteSelectedRecordButton_Click(object sender, RoutedEventArgs e)
+        {
+            var selectedRecord = (Record)RecordsListView.SelectedItem;
+
+            try
+            {
+                var recordToDelete = dbContext.Records.FirstOrDefault(r => r.RecordId == selectedRecord.RecordId);
+                dbContext.Records.Remove(recordToDelete);
+                dbContext.SaveChanges();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error deleteing record: {ex.Message}");
+            }
+            finally
+            {
+                LoadRecords();
+            }
         }
 
         private void GeneticSolver_OnGenerationCompleted(int generation, GeneticSolverLibrary.Grid bestGrid)
@@ -33,7 +117,7 @@ namespace GeneticSolverUI
             {
                 UpdateCanvas(bestGrid);
                 GenerationText.Text = $"Generation: {generation}";
-                BestDistanceText.Text = $"Best distance: {bestGrid.MinCoverRectSquare()}";
+                BestSquareText.Text = $"Best distance: {bestGrid.MinCoverRectSquare()}";
             });
         }
 
@@ -50,18 +134,53 @@ namespace GeneticSolverUI
 
             Start.IsEnabled = false;
             Stop.IsEnabled = true;
+            Continue.IsEnabled = false;
+            Save.IsEnabled = true;
 
-            var bestGrid = await Task.Run(() => geneticSolver.Iterations());
+            var bestGrid = await Task.Factory.StartNew(() =>
+            {
+                return geneticSolver.Iterations();
+            }, TaskCreationOptions.LongRunning);
 
-            Start.IsEnabled = true;
-            Stop.IsEnabled = false;
             UpdateCanvas(bestGrid);
         }
+
+        private async void SaveSolver(object sender, RoutedEventArgs e)
+        {
+            Start.IsEnabled = true;
+            Stop.IsEnabled = false;
+
+            stopperFunction();
+
+            if (geneticSolver != null)
+            {
+                SaveGenSolver(geneticSolver, NewRecordNameInput.Text);
+                UpdateCanvas(geneticSolver.population.OrderBy(val => val.MinCoverRectSquare()).ElementAt(0));
+            }
+        }
+
+        private async void ContinueSolver(object sender, RoutedEventArgs e)
+        {
+            Start.IsEnabled = false;
+            Stop.IsEnabled = true;
+            Continue.IsEnabled = false;
+            Save.IsEnabled = true;
+
+            geneticSolver.OnIterationPassed += GeneticSolver_OnGenerationCompleted;
+
+            var bestGrid = await Task.Factory.StartNew(() =>
+            {
+                return geneticSolver.Iterations();
+            }, TaskCreationOptions.LongRunning);
+
+            UpdateCanvas(bestGrid);
+        }
+
 
         private void UpdateCanvas(GeneticSolverLibrary.Grid gridData)
         {
             VisualizationCanvas.Children.Clear();
-            var rectangles = gridData.vals;
+            var rectangles = gridData.Figures;
 
             double maxX = rectangles.Max(rect => rect.x + rect.len);
             double maxY = rectangles.Max(rect => rect.y + rect.len);
@@ -91,12 +210,61 @@ namespace GeneticSolverUI
             }
         }
 
-        private async void StopSolver(object sender, RoutedEventArgs e)
+        public void SaveGenSolver(GenSolver solver, string recordName)
+        {
+            // Переместить посчитанный ConcurrentBag в лист для записи в БД 
+            solver.SyncPopulationToDb();
+
+            var record = new Record
+            {
+                Name = recordName,
+                CreationDate = DateTime.Now,
+                GenSolver = solver
+            };
+
+            dbContext.Records.Add(record);
+            dbContext.SaveChanges();
+
+            LoadRecords();
+        }
+
+        public GenSolver? LoadGenSolver(int recordId)
         {
             if (geneticSolver != null)
             {
                 geneticSolver.flagStop = true;
             }
+
+            var record = dbContext.Records
+                .Include(r => r.GenSolver)
+                    .ThenInclude(gs => gs.GridsForDb)
+                    .ThenInclude(g => g.Figures)
+                .FirstOrDefault(r => r.RecordId == recordId);
+
+            if (record?.GenSolver != null)
+            {
+                // Переместить загруженный лист из БД в ConcurrentBag
+                record.GenSolver.SyncDbToPopulation();
+            }
+
+            return record?.GenSolver;
+        }
+
+        private void stopperFunction()
+        {
+            if (geneticSolver != null)
+            {
+                geneticSolver.flagStop = true;
+            }
+
+            Start.IsEnabled = true;
+            Stop.IsEnabled = false;
+            Continue.IsEnabled = false;
+            Save.IsEnabled = true;
+        }
+        private async void StopSolver(object sender, RoutedEventArgs e)
+        {
+            stopperFunction();
         }
     }
 }
